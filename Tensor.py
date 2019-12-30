@@ -47,8 +47,8 @@ class Tensor:
 			self.basis=None
 			# self.length=1
 			self.length=self.get_length()
-			self.relLen_dict=get_relLen(inputs)
-			self.pointer_dict=get_pointers(inputs)
+			self.relLen_dict=self.get_relLen(inputs)
+			self.pointer_dict=self.get_pointers(inputs)
 
 	def __repr__(self, plist=["cm","pointer_dict", "length"]):
 		if(self.N==(0,0,0)):
@@ -70,17 +70,18 @@ class Tensor:
 		#TODO, if missing inputs allow for reduced activation
 
 		#correct relative lengths
-		for key, value in inputs:
-			count =0
-			if self.inputs[key]!=value:
-				print("not equall element")
-				count+=1
-			acc=1-count/len(input)
-			print(acc)
+		if(self.relLen_dict!=self.get_relLen(inputs)):
+			return False
 
 		#correct pointers
+		if not np.array_equal(self.pointer_dict,self.get_pointers(inputs)):
+			# print(self.pointer_dict)
+			# print(self.get_pointers(inputs))
+			return False
 
 		#correct basis
+
+		return True
 
 
 	def get_length(self):
@@ -97,17 +98,16 @@ class Tensor:
 		#relative lengths
 	def get_relLen(self,inputs):
 		inputs.sort(key= lambda x: x.cm[0] + x.cm[1]*yRange)
-		relLen_dict={}
+		relLen_dict=defaultdict(list)  #list backed multidic
 
 		for i in range(len(inputs)):
-			relLen_dict[inputs[i].N]=inputs[i].length/self.length
+			relLen_dict[inputs[i].N].append(inputs[i].length/self.length)
 		return relLen_dict	
 
 
 	def get_pointers(self,inputs):
 		inputs.sort(key= lambda x: x.cm[0] + x.cm[1]*yRange)
-
-		pointer_dict={}
+		pointer_dict = defaultdict(list)  #list backed multidict
 		
 		if(len(inputs)<2): 
 			print("error only one input, for input", inputs)
@@ -115,24 +115,24 @@ class Tensor:
 		#[a,b,c,d]
 		for i in range(len(inputs)):
 			# delta x,y normalized by length
-			pointer = lambda a,b: np.array([inputs[a].cm[0]-inputs[b].cm[0], inputs[a].cm[1]-inputs[b].cm[1]])/self.length
+			pointer = lambda a,b: (np.array([inputs[a].cm[0]-inputs[b].cm[0], inputs[a].cm[1]-inputs[b].cm[1]])/self.length).tolist()
 			if i==0:
 				# which ti input,pointer to tj input -- where Neighboorhood determines identity
 				#a->b
-				pointer_dict[(inputs[i].N,inputs[i+1].N)]=pointer(i,i+1)
+				pointer_dict[(inputs[i].N,inputs[i+1].N)].append(pointer(i,i+1))
 				#a->d
 				# pointer_dict[(inputs[i].N,inputs[-1].N)]=pointer(i,-1)
 			elif i==len(inputs)-1:
 				#d->c
-				pointer_dict[(inputs[i].N,inputs[i-1].N)]=pointer(i,i-1)
+				pointer_dict[(inputs[i].N,inputs[i-1].N)].append(pointer(i,i-1))
 				#d->a
 				# pointer_dict[(inputs[i].N,inputs[0].N)]=pointer(i,0)
 			else:
 				#b->a
-				pointer_dict[(inputs[i].N,inputs[i-1].N)]=pointer(i,i-1)
+				pointer_dict[(inputs[i].N,inputs[i-1].N)].append(pointer(i,i-1))
 				#b->c
-				pointer_dict[(inputs[i].N,inputs[i+1].N)]=pointer(i,i+1)
-		print("pointers",pointer_dict)
+				pointer_dict[(inputs[i].N,inputs[i+1].N)].append(pointer(i,i+1))
+		# print("pointers",pointer_dict)
 		return pointer_dict
 
 
@@ -158,14 +158,18 @@ def fowardPass(x,y,img):
 def main():
 
 
-	img = np.eye(7, dtype=np.float32)
+	img = np.eye(20, dtype=np.float32)
 	cv2.imshow("Image",img)
 
 	tensor = fowardPass(3,3,img)
-	inputs = inputs_fromImg(4,3,img)
+	inputs = inputs_fromImg(3,3,img)
+	inputs2 = inputs_fromImg(6,5,img)
 
-	print(tensor)
+
+	# print(tensor.__repr__(plist=["relLen_dict"]))
 	print(tensor.activate(inputs))
+	print(tensor.activate(inputs2))
+
 
 	# cv2.waitKey(0)
 	# cv2.destroyAllWindows()
