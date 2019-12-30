@@ -9,8 +9,9 @@ import operator
 import cv2
 
 
-xRange=100
-yRange=100
+key=1
+
+xRange=yRange=512
 
 def cycle(input, i=1):
 	while True:
@@ -28,12 +29,14 @@ class Cm:
 		return [[x_,y_] for x_ in range(max(self.x-1,0),min(self.x+2,xRange)) for y_ in range(max(self.y-1,0),min(self.y+2,yRange)) ]
 
 class Tensor:
-	def __init__(self,cm=None, inputs=None, N=(0,0,0)):
+	def __init__(self,cm=None, inputs=[], N=(0,0,1)):
 
 		#unit_tensor
-		if inputs==None :
+		# if(N==(-1,-1,-1)):
+		# 	self.type="null tensor"
+		if inputs==[]:
 			self.cm = cm
-			self.N=N
+			self.N=(0,0,0)
 			self.basis=None
 			self.length=1
 			self.inputs=inputs
@@ -42,15 +45,27 @@ class Tensor:
 		else:
 			# self.cm = cm
 			self.inputs=inputs
+			self.types=self.get_types(inputs)
+
 			self.cm=self.get_cm()
-			self.N=(0,0,1)
+			self.N=N
 			self.basis=None
 			# self.length=1
 			self.length=self.get_length()
 			self.relLen_dict=self.get_relLen(inputs)
 			self.pointer_dict=self.get_pointers(inputs)
 
-	def __repr__(self, plist=["cm","pointer_dict", "length"]):
+	def __eq__(self, other): 
+		if(self.types==other.types and
+			self.relLen_dict==other.relLen_dict and
+			self.pointer_dict==other.pointer_dict): 
+			return True
+		else:
+			return False
+	def __hash__(self):
+		return 1
+
+	def __repr__(self, plist=["cm","pointer_dict", "length", "inputs"]):
 		if(self.N==(0,0,0)):
 			plist=["cm"]
 		rep= "\nTensor: " + str(self.N) +"\n"
@@ -61,10 +76,7 @@ class Tensor:
 	#runtime activation of this tensor given inputs
 	def activate(self,inputs):
 		
-		s1=collections.Counter(x.N for x in self.inputs)
-		s2=collections.Counter(x.N for x in inputs)
-
-		if(s1!=s2):
+		if(self.get_types(inputs)!=self.types):
 			return False
 		
 		#TODO, if missing inputs allow for reduced activation
@@ -74,7 +86,7 @@ class Tensor:
 			return False
 
 		#correct pointers
-		if not np.array_equal(self.pointer_dict,self.get_pointers(inputs)):
+		if (self.pointer_dict!=self.get_pointers(inputs)):
 			# print(self.pointer_dict)
 			# print(self.get_pointers(inputs))
 			return False
@@ -83,6 +95,9 @@ class Tensor:
 
 		return True
 
+	@staticmethod
+	def get_types(inputs):
+		return collections.Counter(x.N for x in inputs)
 
 	def get_length(self):
 		return sum(input.length for input in self.inputs)
@@ -110,8 +125,8 @@ class Tensor:
 		pointer_dict = defaultdict(list)  #list backed multidict
 		
 		if(len(inputs)<2): 
-			print("error only one input, for input", inputs)
-			return
+			# print("error only one input, for input", inputs)
+			return pointer_dict
 		#[a,b,c,d]
 		for i in range(len(inputs)):
 			# delta x,y normalized by length
@@ -140,40 +155,99 @@ def inputs_fromImg(x,y,img):
 	cm = Cm(x,y)
 
 	#list of unit tensors which are not 0, aka 1 in boolean img input case
+	# test = [img[cm_[0]][cm_[1]] for cm_ in cm.neighbors() if img[cm_[0]][cm_[1]]!=999999]
 	unit_tensors=[Tensor(cm_) for cm_ in cm.neighbors() if img[cm_[0],cm_[1]]!=0]
 	if(unit_tensors!=[]): 
 		return unit_tensors
 	else:
 		#null tensor
-		return [Tensor(N=(-1,-1,-1))]
+		# return [Tensor(N=(-1,-1,-1))]
+		return None
 
 def fowardPass(x,y,img):
 
 	unit_tensors=inputs_fromImg(x,y,img)
-
-
 	newTensor= Tensor(cm=[x,y], inputs=unit_tensors)
 	return newTensor
 
 def main():
 
 
-	img = np.eye(20, dtype=np.float32)
+	img = np.eye(xRange, dtype=np.float32)
 	cv2.imshow("Image",img)
 
-	tensor = fowardPass(3,3,img)
-	inputs = inputs_fromImg(3,3,img)
-	inputs2 = inputs_fromImg(6,5,img)
+	tensor = fowardPass(6,6,img)
+	# inputs = inputs_fromImg(6,6,img)
+
 
 
 	# print(tensor.__repr__(plist=["relLen_dict"]))
-	print(tensor.activate(inputs))
-	print(tensor.activate(inputs2))
+	print(tensor)
 
 
 	# cv2.waitKey(0)
 	# cv2.destroyAllWindows()
 
-main()
+def smt():
+	key=5
+	# xRange=yRange=512
 
+	# img = np.eye(xRange, dtype=np.float32)
+	img = np.zeros((512,512,3), np.float32)
+	# cv2.rectangle(img,(384,0),(510,128),(0,255,0),100)
+	cv2.circle(img,(150,150), 100, (0,0,255), -1)
+	img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+	print(img.shape)
+	cv2.imshow("lalala", img)	
+	# k = cv2.waitKey(0) # 0==wait forever
+	#no sliding for now
+	delta=1
+
+	#all z0 tensors
+	#dict of tensors
+	z0=set()
+	z=dict()
+	for x in range(0,xRange,delta):	
+		for y in range(0,yRange,delta):
+			unit_tensors=inputs_fromImg(x+1,y+1,img)
+			# if(x==6 and y==6):
+			# 	print(unit_tensors)
+			if unit_tensors==None:
+				continue
+			tensor= Tensor(cm=[x,y], inputs=unit_tensors, N=(0,0,key))
+			
+			#todo implement hash function
+			if tensor not in z0:
+				key+=3
+				z0.add(tensor)
+				z[tensor]=tensor.N
+	print("found {} tensors".format(len(z0)))
+
+
+	#color picture using tensor types
+	img2=np.zeros((512,512,), np.uint8)
+	for x in range(0,xRange,delta):	
+		for y in range(0,yRange,delta):
+			unit_tensors=inputs_fromImg(x+1,y+1,img)
+			if unit_tensors==None:
+				continue
+			tensor= Tensor(cm=[x,y], inputs=unit_tensors, N=(0,0,key))
+
+			# print(z[tensor])
+			img2[x][y]=z[tensor][2]
+	cv2.imshow("new img",img2)
+	k = cv2.waitKey(0) # 0==wait forever
+
+
+
+	# z0.pop()
+	# print("here is one of the tensors {}".format(z0.pop()))
+
+	# pprint.pprint(z0)
+
+
+
+
+smt()
+# main()
 
