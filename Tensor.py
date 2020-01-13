@@ -59,12 +59,12 @@ class Cm:
 		return [[x_,y_] for x_ in range(max(self.x-1,0),min(self.x+2,xRange)) for y_ in range(max(self.y-1,0),min(self.y+2,yRange)) ]
 
 class Tensor:
-	def __init__(self,cm=None, inputs=[], N=(0,0,1)):
+	def __init__(self,cm, inputs=[], N=(0,0,1),unit_tensor=False):
 
 		#unit_tensor
 		# if(N==(-1,-1,-1)):
 		# 	self.type="null tensor"
-		if inputs==[]:
+		if unit_tensor:
 			self.cm = cm
 			self.N=(0,0,0)
 			self.length=1
@@ -72,6 +72,7 @@ class Tensor:
 			self.relLen_dict={}
 			self.pointer_dict={}
 			self.input_dict=dict()
+			self.weights=[]
 		else:
 			# self.cm = cm
 			self.inputs=inputs
@@ -83,10 +84,11 @@ class Tensor:
 			self.length=self.get_length()
 			self.relLen_dict=self.get_relLen(inputs)
 			self.pointer_dict=self.init_pointer_dict(inputs)
+			self.weights=[]
 
 	def init_types(self,inputs):
 		#returns updated_dict since help=1 is on, with w=p(0)
-		input_dict=self.activate_component(self.get_inputs(self,inputs),{},help=1)
+		input_dict=self.activate_component(self.get_inputs(inputs),{},help=1)
 		# print("input_dict",input_dict)
 		return input_dict
 
@@ -96,16 +98,16 @@ class Tensor:
 		return pointer_dict
 
 	def __eq__(self, other): 
-		if(self.input_dict==other.input_dict and
-			self.relLen_dict==other.relLen_dict and
-			self.pointer_dict==other.pointer_dict): 
+		if(frozenset(self.input_dict)==frozenset(other.input_dict) and
+			frozenset(self.relLen_dict)==frozenset(other.relLen_dict) and
+			frozenset(self.pointer_dict)==frozenset(other.pointer_dict)): 
 			return True
 		else:
 			return False
 	def __hash__(self):
 		return hash(frozenset(self.input_dict).union(self.relLen_dict).union(self.pointer_dict))
 
-	def __repr__(self, plist=["cm","pointer_dict", "length", "inputs"]):
+	def __repr__(self, plist=["cm","pointer_dict", "length"]):
 		if(self.N==(0,0,0)):
 			plist=["cm"]
 		rep= "\nTensor: " + str(self.N) +"\n"
@@ -170,9 +172,7 @@ class Tensor:
 	                # self.input_dict=updated_input_dict
 	        return updated_input_dict
 	    else:
-	        return None
-
-
+	        return False
 
 	def activate(self,inputs):
 
@@ -180,7 +180,7 @@ class Tensor:
 		# if(self.get_input_dict(inputs)!=self.input_dict):
 		# 	return False
 
-		if activate_component(self,get_inputs(inputs),self.input_dict)==None:
+		if activate_component(self,get_inputs(inputs),self.input_dict)==False:
 			return False
 
 		
@@ -201,9 +201,9 @@ class Tensor:
 		return True
 
 
-	@staticmethod
 	def get_inputs(self,inputs):
 		# return collections.Counter(x.N for x in inputs)
+
 		counter = collections.Counter(x.N for x in inputs)
 		#makes counter hashable goes from a:2 -> (a,2) where a is x.N
 		inputs = frozenset(counter.items())
@@ -271,66 +271,59 @@ class Tensor:
 	    return frozenset(pointer_counter)
 
 
-def inputs_fromImg(x,y,img,unit_tensor=True):
-	cm = Cm(x,y)
-	cm=[x,y]
+def inputs_fromImg(x,y,img):
+	cm =[x,y]
 	sizeX,sizeY=img.shape[0],img.shape[1]
-	#list of unit tensors which are not 0, aka 1 in boolean img input case
-	# test = [img[cm_[0]][cm_[1]] for cm_ in cm.neighbors() if img[cm_[0]][cm_[1]]!=999999]
-	if unit_tensor:
-		tensors=[Tensor(cm_) for cm_ in neighbors(x,y, xRange=sizeX,yRange=sizeY ) if img[cm_[0],cm_[1]]!=0]
-	# else:
-	# 	tensors=[img[] for cm_ in cm.neighbors() if img[cm_[0],cm_[1]]!=0]
 
-	if(tensors!=[]): 
-		return tensors
+	input_tensors=[img[cm_[0]][cm_[1]] for cm_ in neighbors(x,y, xRange=sizeX,yRange=sizeY ) if type(img[cm_[0],cm_[1]])!=int]
+
+	if(len(input_tensors)>1): 
+		return input_tensors
 	else:
-		#null tensor
-		# return [Tensor(N=(-1,-1,-1))]
 		return None
 
-def fowardPass(x,y,img):
-
-	unit_tensors=inputs_fromImg(x,y,img)
-	newTensor= Tensor(cm=[x,y], inputs=unit_tensors)
-	return newTensor
-
+#todo optimize
+#pixel->unit_tensor
+def transformImg(img):
+	tensorImg=np.zeros((img.shape[0],img.shape[1]), Tensor) 
+	for x in range(0,img.shape[0]):
+		for y in range(0,img.shape[1]):
+			if(img[x][y]!=0):
+				tensorImg[x][y]=Tensor(cm=[x,y],unit_tensor=True)
+	return tensorImg
 
 #for each active tensor get the nearest K tensors, corresponds to delta-1 sliding kernel
 #given an input of an array of tensors
-def learn_z0(img, x=0,y=0,delta=1):
+def learn_z(img,z, x=0,y=0,delta=1):
 	key=50
-	# xRange=yRange=512
-
-	#all z0 tensors
-	#dict of tensors
 	sizeX,sizeY=img.shape[0],img.shape[1]
 	for x in range(1,sizeX,delta):	
 		for y in range(1,sizeY,delta):
-			unit_tensors=inputs_fromImg(x,y,img)
+			input_tensors=inputs_fromImg(x,y,img)
 			# if(x==6 and y==6):
 			# 	print(unit_tensors)
-			if unit_tensors==None:
+			if input_tensors==None:
 				continue
-			tensor= Tensor(cm=[x,y], inputs=unit_tensors, N=(x,y,key))
+			# print(unit_tensors,"x,y: ",(x,y),"-----\n")
+			tensor= Tensor(cm=[x,y], inputs=input_tensors, N=(x,y,key))
 			if tensor not in z:
 				key+=10
 				z[tensor]=tensor.N
 	print("found {} tensors".format(len(z)))
-	return z
 
 
-def convertToZ0(img, delta=1):
-	#color picture using tensor types
+#converts to Big tensor given img of tensor inputs
+def showNeighborhood(img,z, delta=1):
 	img2=np.zeros((img.shape[0]//delta,img.shape[1]//delta,), np.uint8)
 
 	print("img shape",img.shape)
 	for x in range(1,img.shape[0],delta):	
 		for y in range(1,img.shape[1],delta):
-			unit_tensors=inputs_fromImg(x,y,img)
-			if unit_tensors==None:
+			input_tensors=inputs_fromImg(x,y,img)
+			# print(unit_tensors)
+			if input_tensors==None:
 				continue
-			tensor= Tensor(cm=[x,y], inputs=unit_tensors, N=(0,0,0))
+			tensor= Tensor(cm=[x,y], inputs=input_tensors, N=(0,0,0))
 
 			# print(z[tensor])
 			if z.get(tensor)==None:
@@ -346,121 +339,72 @@ def convertToZ0(img, delta=1):
 
 
 
-z=dict()
+
+def main():
+		img=np.eye(3)
+		img=transformImg(img)
+		z=dict()
+		# z0=showNeighborhood0(img)
+
+		# unit_tensors=inputs_fromImg(2,1,img,True)
+		# print(unit_tensors)
+
+
+		learn_z(img,z)
+		print(z)
+
+main()
+
 def main2():
 
-
+	z=dict()
 	#circle
 	# img = np.eye(xRange, dtype=np.float32)
 	img = np.zeros((xRange,xRange,3), np.uint8)
 	# cv2.rectangle(img,(384,0),(510,128),(0,255,0),100)
 	cv2.circle(img,(250,250), 200, (0,0,255), -1)
 	img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-	cv2.imshow("lalala", img)	
+	img = cv2.Laplacian(img,cv2.CV_64F)
+	cv2.imshow("laplazian filter", img)	
 
-	#update z0 columb
-	z.update(learn_z0(img))
-	actImg=convertToZ0(img,delta=3)
+	#tensor array
+	img=transformImg(img)
 
-	cv2.imshow("Z0",actImg)
-	k = cv2.waitKey(0) # 0==wait forever
 
 
 	# z.update(learn_z0(actImg))
-	# newImg=convertToZ0(actImg)
+	# newImg=showNeighborhood0(actImg)
 	# cv2.imshow("Z0",newImg)
 	# k = cv2.waitKey(0) # 0==wait forever
 
-	for i in range(1,10):
-		print(i,"---")
-		img = test(img,i)
+	# for i in range(1,10):
+	# 	print(i,"---")
+	# 	img = test(img,i)
+
+	for i in range(1):
+		img=recursiveZ(img,z,i)
+
+def recursiveZ(img,z,i):
+	cv2.namedWindow("z",cv2.WINDOW_NORMAL)
+	cv2.resizeWindow("z", 600,600)
+	learn_z(img,z,i,i,delta=3)
+	Z1=showNeighborhood(img,z,delta=3)
+
+	cv2.imshow("z",Z1)
+	k = cv2.waitKey(0) # 0==wait forever
+	return Z1
+
+main2()
 
 
-
-def test(img,i):
+def test(img,z,i):
 	cv2.namedWindow("z",cv2.WINDOW_NORMAL)
 	cv2.resizeWindow("z", 600,600)
 
-	learn_z0(img,i,i,delta=3)
-	outImg=convertToZ0(img,delta=3)
+	learn_z(img,z,i,i,delta=3,inputs_fromImg=False)
+	outImg=showNeighborhood(img,z,delta=3)
 	cv2.imshow("z",outImg)
 	k = cv2.waitKey(0) # 0==wait forever
 
 	return outImg
-
-
-
-
-
-
-# main2()
-
-
-def smt():
-	key=50
-	# xRange=yRange=512
-
-	# img = np.eye(xRange, dtype=np.float32)
-	img = np.zeros((xRange,xRange,3), np.uint8)
-	# cv2.rectangle(img,(384,0),(510,128),(0,255,0),100)
-	cv2.circle(img,(250,250), 200, (0,0,255), -1)
-	img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-	print(img.shape)
-	cv2.imshow("lalala", img)	
-	# k = cv2.waitKey(0) # 0==wait forever
-	#no sliding for now
-	delta=3
-
-	#all z0 tensors
-	#dict of tensors
-	z0=set()
-	z=dict()
-	for x in range(0,xRange,delta):	
-		for y in range(0,yRange,delta):
-			unit_tensors=inputs_fromImg(x+1,y+1,img)
-			# if(x==6 and y==6):
-			# 	print(unit_tensors)
-			if unit_tensors==None:
-				continue
-			tensor= Tensor(cm=[x,y], inputs=unit_tensors, N=(0,0,key))
-			
-			#todo implement hash function
-			if tensor not in z0:
-				key+=10
-				z0.add(tensor)
-				z[tensor]=tensor.N
-	print("found {} tensors".format(len(z0)))
-
-
-	img2=np.zeros((xRange,yRange,), np.uint8)
-	for x in range(0,xRange,1):	
-		for y in range(0,yRange,1):
-			unit_tensors=inputs_fromImg(x+1,y+1,img)
-			if unit_tensors==None:
-				continue
-			tensor= Tensor(cm=[x,y], inputs=unit_tensors, N=(0,0,key))
-
-			# print(z[tensor])
-			if z.get(tensor)==None:
-				img2[x][y]=0
-			else:
-				img2[x][y]=z[tensor][2]
-
-	# print(z.values())
-	# print([img2[x][y] for x in range(512) for y in range(512) if img2[x][y]!=0])
-	cv2.imshow("new img",img2)
-	k = cv2.waitKey(0) # 0==wait forever
-
-
-
-	# z0.pop()
-	# print("here is one of the tensors {}".format(z0.pop()))
-
-	# pprint.pprint(z0)
-
-
-
-
-# smt()
-# main()
 
