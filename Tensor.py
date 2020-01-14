@@ -26,53 +26,37 @@ def neighbors(x, y, xRange, yRange, i=1,limit=1):
 
 	while (limit>0):
 		#top row
-		list=[[x_,y-i] for x_ in range(max(x-i,0),min(x+1+i,xRange)) if y-i <yRange]
+		neighbors=[[x,y]]
+		neighbors+=[[x_,y-i] for x_ in range(max(x-i,0),min(x+1+i,xRange)) if y-i <yRange]
 		# print(list,"---")
 		#left side and right side
-		list+=[[x_,y_] for x_ in [x-i] for y_ in range(max(y+1-i,0),min(y+i,yRange)) if x-i>=0 ]
-		list+=[[x_,y_] for x_ in [x+i] for y_ in range(max(y+1-i,0),min(y+i,yRange)) if x+i<xRange    ]
+		neighbors+=[[x_,y_] for x_ in [x-i] for y_ in range(max(y+1-i,0),min(y+i,yRange)) if x-i>=0 ]
+		neighbors+=[[x_,y_] for x_ in [x+i] for y_ in range(max(y+1-i,0),min(y+i,yRange)) if x+i<xRange    ]
 
 		# print(list,"---")
 		#bottom row
-		list+=[[x_,y+i] for x_ in range(max(x-i,0),min(x+1+i,xRange)) if y+i <yRange]
+		neighbors+=[[x_,y+i] for x_ in range(max(x-i,0),min(x+1+i,xRange)) if y+i <yRange]
 		# print(list,"---")
 
-		for a in list:
+		for a in neighbors:
 			yield a
 		limit-=1
 		i+=1
 
 
-def cycle(input, i=1):
-	while True:
-		for x in input[::i]:
-			yield x
-
-
-class Cm:
-	def __init__(self,x,y):
-		self.x=x
-		self.y=y
-
-
-	def neighbors(self):
-		return [[x_,y_] for x_ in range(max(self.x-1,0),min(self.x+2,xRange)) for y_ in range(max(self.y-1,0),min(self.y+2,yRange)) ]
-
 class Tensor:
-	def __init__(self,cm, inputs=[], N=(0,0,1),unit_tensor=False):
-
-		#unit_tensor
-		# if(N==(-1,-1,-1)):
-		# 	self.type="null tensor"
+	def __init__(self,cm=None, inputs=[], N=(0,0,1),unit_tensor=False):
+		#key: value = N(x,y,z):[edges]
+		edges_dict={}
 		if unit_tensor:
 			self.cm = cm
 			self.N=(0,0,0)
 			self.length=1
-			self.inputs=inputs
+			self.inputs=None
 			self.relLen_dict={}
 			self.pointer_dict={}
 			self.input_dict=dict()
-			self.weights=[]
+			self.neighbors=[]
 		else:
 			# self.cm = cm
 			self.inputs=inputs
@@ -84,7 +68,8 @@ class Tensor:
 			self.length=self.get_length()
 			self.relLen_dict=self.get_relLen(inputs)
 			self.pointer_dict=self.init_pointer_dict(inputs)
-			self.weights=[]
+			self.neighbors=[]
+			# self.clean()
 
 	def init_types(self,inputs):
 		#returns updated_dict since help=1 is on, with w=p(0)
@@ -107,7 +92,7 @@ class Tensor:
 	def __hash__(self):
 		return hash(frozenset(self.input_dict).union(self.relLen_dict).union(self.pointer_dict))
 
-	def __repr__(self, plist=["cm","pointer_dict", "length"]):
+	def __repr__(self, plist=["cm","neighbors","input_dict"]):
 		if(self.N==(0,0,0)):
 			plist=["cm"]
 		rep= "\nTensor: " + str(self.N) +"\n"
@@ -116,20 +101,21 @@ class Tensor:
 		return rep
 
 	def accumulate(self, input):
-		if self.inputs==None:
-			self.inputs=[]
-		self.inputs+=inputs
+		self.inputs.append(input)
 
 	def clean(self):
+		# return
 		self.inputs=[]
-		self.cm=None
-		self.length=None
+		# self.cm=None
+		# self.length=None
 
 	#runtime activation of this tensor given inputs
 
 	def activate_component(self,inputs,input_dict, norm=1/15, threshold=3/4, help=0):
 	    # input_dict=self.input_dict
 	    act=help
+	    present = lambda key, inputs: 1 if key in inputs else 0
+
 	    # left side of the gaussian curve, from domain 0->1
 	    p = lambda w: min(math.pow(math.e, (math.pi * -math.pow((w-1),2))),1)
 	    dw = lambda w: -2*math.pi*(w-1)*p(w)
@@ -141,7 +127,7 @@ class Tensor:
 	    for key,w in input_dict.items():
 
 	        if(present(key,inputs)):
-	            print(key,present(key,inputs),"   ",w)
+	            # print(key,present(key,inputs),"   ",w)
 	            act+=present(key,inputs)*w
 	            #probability of weight w
 	            
@@ -155,7 +141,6 @@ class Tensor:
 
 
 	    #normalize over avg weights and number of inputs
-	    # print("sum act",act)
 	    # act=act*sum(input_dict.values())/(int(len(input_dict))**2)
 	    try:
 	        act=round(act/sum(input_dict.values()),5)
@@ -174,36 +159,44 @@ class Tensor:
 	    else:
 	        return False
 
-	def activate(self,inputs):
+	def activate(self):
 
 
-		# if(self.get_input_dict(inputs)!=self.input_dict):
+
+
+		# if self.activate_component(self.get_inputs(self.inputs),self.input_dict)==False:
+		# 	self.clean()
 		# 	return False
-
-		if activate_component(self,get_inputs(inputs),self.input_dict)==False:
-			return False
 
 		
 		#TODO, if missing inputs allow for reduced activation
 
 		#correct relative lengths
-		if(self.relLen_dict!=self.get_relLen(inputs)):
+		if(self.relLen_dict!=self.get_relLen(self.inputs)):
+			self.clean()
 			return False
 
-		#correct pointers
-		if (self.pointer_dict!=self.get_pointers(inputs)):
-			# print(self.pointer_dict)
-			# print(self.get_pointers(inputs))
+
+		updated_pointer_dict=self.activate_component(self.get_pointers(self.inputs), self.pointer_dict)
+		if updated_pointer_dict!=False:
+			self.pointer_dict=updated_pointer_dict
+		else:
+			self.clean()
 			return False
+
+		# if (self.pointer_dict!=self.get_pointers(self.inputs)):
+		# 	self.clean()
+		# 	# print(self.pointer_dict)
+		# 	# print(self.get_pointers(inputs))
+		# 	return False
 
 		#correct basis
-
+		self.clean()
 		return True
 
 
 	def get_inputs(self,inputs):
 		# return collections.Counter(x.N for x in inputs)
-
 		counter = collections.Counter(x.N for x in inputs)
 		#makes counter hashable goes from a:2 -> (a,2) where a is x.N
 		inputs = frozenset(counter.items())
@@ -271,10 +264,12 @@ class Tensor:
 	    return frozenset(pointer_counter)
 
 
-def inputs_fromImg(x,y,img):
-	cm =[x,y]
-	sizeX,sizeY=img.shape[0],img.shape[1]
+def inputs_fromImg(x,y,img, sizeX=None,sizeY=None):
+	if sizeX==None:
+		sizeX=img.shape[0]
+		sizeY=img.shape[1]
 
+	cm =[x,y]
 	input_tensors=[img[cm_[0]][cm_[1]] for cm_ in neighbors(x,y, xRange=sizeX,yRange=sizeY ) if type(img[cm_[0],cm_[1]])!=int]
 
 	if(len(input_tensors)>1): 
@@ -294,7 +289,7 @@ def transformImg(img):
 
 #for each active tensor get the nearest K tensors, corresponds to delta-1 sliding kernel
 #given an input of an array of tensors
-def learn_z(img,z, x=0,y=0,delta=1):
+def learn_z0(img,z, Nx=0,Ny=0,delta=1):
 	key=50
 	sizeX,sizeY=img.shape[0],img.shape[1]
 	for x in range(1,sizeX,delta):	
@@ -305,12 +300,69 @@ def learn_z(img,z, x=0,y=0,delta=1):
 			if input_tensors==None:
 				continue
 			# print(unit_tensors,"x,y: ",(x,y),"-----\n")
-			tensor= Tensor(cm=[x,y], inputs=input_tensors, N=(x,y,key))
+			tensor= Tensor(cm=[x,y], inputs=input_tensors, N=(Nx,Ny,key))
 			if tensor not in z:
 				key+=10
 				z[tensor]=tensor.N
 	print("found {} tensors".format(len(z)))
 
+
+def accumlate_neighbors(self,inputs):
+	for neighbor in self.neighbors:
+		#for now edge is just a Parent tensor, todo update with weight
+
+		#provide region around the given tensor to learn relations
+		neighbor.accumulate(inputs)
+
+
+def learn(img,z, Nx=0,Ny=0,delta=1):
+	newParentTensors=0
+	key=50
+	sizeX,sizeY=img.shape[0],img.shape[1]
+	for x in range(1,sizeX,delta):	
+		for y in range(1,sizeY,delta):			
+			#tensors in the ROI centered around x,y
+			input_tensors=inputs_fromImg(x,y,img)
+			if input_tensors==None:
+				continue
+
+			#accumulate current inputs to parent tensors
+			parentTensors=[]
+			for tensor in input_tensors:
+				if tensor.neighbors!=[]:
+					for neighbor in tensor.neighbors:
+						parentTensors.append(neighbor)
+						#gets neighboring tensors around the tensor, if they are within the ROI
+						neighbor.accumulate(tensor)
+						# neighbor.accumulate([tensor for tensor in input_tensors if tensor.cm[0]<=x+1 and tensor.cm[1]<=y+1])
+					
+			# activate each parent tensor
+			# for parentTensor in parentTensors:
+			# 	parentTensor.activate()
+			no_activations=not np.array([parentTensor.activate() for parentTensor in parentTensors]).any()
+
+
+			#if no outgoing edges
+			if parentTensors==[]:
+				print("no parent tensors", input_tensors,"\n\n")
+				#adds a new tensor to the
+				parentTensor=Tensor(inputs=input_tensors,N=(Nx,Ny,key))
+				key+=10
+
+				if parentTensor not in z:
+					z[parentTensor]=parentTensor.N
+					newParentTensors+=1
+				else:
+					pass
+			
+
+				#add a connection to the parentTensor
+				for input in input_tensors:
+					# print("these are the inputs that i am adding a connection to",input)
+					input.neighbors.append(parentTensor)
+
+
+	print("found {} new parent tensors".format(newParentTensors))
 
 #converts to Big tensor given img of tensor inputs
 def showNeighborhood(img,z, delta=1):
@@ -330,6 +382,27 @@ def showNeighborhood(img,z, delta=1):
 				img2[int(x/delta)][int(y/delta)]=0
 			else:
 				img2[int(x/delta)][int(y/delta)]=z[tensor][2]
+	return img2
+
+#given tensor img of layer i gives tensor img of i+1
+def fowardPass(img,z, delta=1):
+	img2=np.zeros((img.shape[0]//delta,img.shape[1]//delta,), Tensor)
+
+	print("img shape",img.shape)
+	for x in range(1,img.shape[0],delta):	
+		for y in range(1,img.shape[1],delta):
+			input_tensors=inputs_fromImg(x,y,img)
+			# print(unit_tensors)
+			if input_tensors==None:
+				continue
+			tensor= Tensor(cm=[x,y], inputs=input_tensors, N=(0,0,0))
+
+			# print(z[tensor])
+			if z.get(tensor)==None:
+				img2[int(x/delta)][int(y/delta)]=0
+			else:
+				tensor.N=z.get(tensor)
+				img2[int(x/delta)][int(y/delta)]=tensor
 
 	# print(z.values())
 	# print([img2[x][y] for x in range(512) for y in range(512) if img2[x][y]!=0])
@@ -350,46 +423,49 @@ def main():
 		# print(unit_tensors)
 
 
-		learn_z(img,z)
+		learn_z0(img,z)
 		print(z)
 
-main()
+# main()
 
 def main2():
 
 	z=dict()
 	#circle
-	# img = np.eye(xRange, dtype=np.float32)
-	img = np.zeros((xRange,xRange,3), np.uint8)
-	# cv2.rectangle(img,(384,0),(510,128),(0,255,0),100)
-	cv2.circle(img,(250,250), 200, (0,0,255), -1)
-	img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-	img = cv2.Laplacian(img,cv2.CV_64F)
-	cv2.imshow("laplazian filter", img)	
+	img = np.eye(27, dtype=np.uint8)
+	# img = np.zeros((xRange,xRange,3), np.uint8)
+	# # cv2.rectangle(img,(384,0),(510,128),(0,255,0),100)
+	# cv2.circle(img,(250,250), 200, (0,0,255), -1)
+	# img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+	# img = cv2.Laplacian(img,cv2.CV_64F)
+	# cv2.imshow("laplazian filter", img)	
 
 	#tensor array
 	img=transformImg(img)
+	#z0 img
+	learn_z0(img,z,delta=1)
+
+	# picture =showNeighborhood(img,z,delta=3)
+	# cv2.imshow("z0",picture)
+	# k=cv2.waitKey(0)
 
 
-
-	# z.update(learn_z0(actImg))
-	# newImg=showNeighborhood0(actImg)
-	# cv2.imshow("Z0",newImg)
-	# k = cv2.waitKey(0) # 0==wait forever
-
-	# for i in range(1,10):
-	# 	print(i,"---")
-	# 	img = test(img,i)
-
+	z0Img=fowardPass(img,z,delta=3)
+	print(z0Img.shape,"shape")
+	z1=dict()
 	for i in range(1):
-		img=recursiveZ(img,z,i)
+		learn(z0Img,z1,Nx=1,Ny=1)		
+	for key,value in z1.items():
+		print(key)
+
+	# for i in range(1):
+	# 	img=recursiveZ(img,z,i)
 
 def recursiveZ(img,z,i):
 	cv2.namedWindow("z",cv2.WINDOW_NORMAL)
 	cv2.resizeWindow("z", 600,600)
-	learn_z(img,z,i,i,delta=3)
+	learn_z0(img,z,i,i,delta=3)
 	Z1=showNeighborhood(img,z,delta=3)
-
 	cv2.imshow("z",Z1)
 	k = cv2.waitKey(0) # 0==wait forever
 	return Z1
@@ -401,10 +477,16 @@ def test(img,z,i):
 	cv2.namedWindow("z",cv2.WINDOW_NORMAL)
 	cv2.resizeWindow("z", 600,600)
 
-	learn_z(img,z,i,i,delta=3,inputs_fromImg=False)
+	learn_z0(img,z,i,i,delta=3,inputs_fromImg=False)
 	outImg=showNeighborhood(img,z,delta=3)
 	cv2.imshow("z",outImg)
 	k = cv2.waitKey(0) # 0==wait forever
 
 	return outImg
+
+
+
+
+
+
 
