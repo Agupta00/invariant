@@ -1,9 +1,10 @@
 #! /usr/bin/env python3
 from typing import List, Set, Dict, Tuple, Optional
+import collections
 from collections import defaultdict
 
 import pprint
-import collections
+
 import numpy as np
 import operator
 import cv2
@@ -45,9 +46,10 @@ def neighbors(x, y, xRange, yRange, i=1,limit=1):
 
 
 class Tensor:
+	edges_dict=defaultdict(list)
+
 	def __init__(self,cm=None, inputs=[], N=(0,0,1),unit_tensor=False):
 		#key: value = N(x,y,z):[edges]
-		edges_dict={}
 		if unit_tensor:
 			self.cm = cm
 			self.N=(0,0,0)
@@ -68,7 +70,7 @@ class Tensor:
 			self.length=self.get_length()
 			self.relLen_dict=self.get_relLen(inputs)
 			self.pointer_dict=self.init_pointer_dict(inputs)
-			self.neighbors=[]
+			self.neighbors=lambda: Tensor.edges_dict[self.N]
 			# self.clean()
 
 	def init_types(self,inputs):
@@ -97,7 +99,10 @@ class Tensor:
 			plist=["cm"]
 		rep= "\nTensor: " + str(self.N) +"\n"
 		for atr in plist:
-			rep+=atr + ": "+ str(getattr(self, atr))+"\n"
+			if atr=="neighbors":
+				rep+=atr + ": "+ str(getattr(self, atr)())+"\n"
+			else:
+				rep+=atr + ": "+ str(getattr(self, atr))+"\n"
 		return rep
 
 	def accumulate(self, input):
@@ -308,7 +313,7 @@ def learn_z0(img,z, Nx=0,Ny=0,delta=1):
 
 
 def accumlate_neighbors(self,inputs):
-	for neighbor in self.neighbors:
+	for neighbor in self.neighbors():
 		#for now edge is just a Parent tensor, todo update with weight
 
 		#provide region around the given tensor to learn relations
@@ -329,8 +334,9 @@ def learn(img,z, Nx=0,Ny=0,delta=1):
 			#accumulate current inputs to parent tensors
 			parentTensors=[]
 			for tensor in input_tensors:
-				if tensor.neighbors!=[]:
-					for neighbor in tensor.neighbors:
+
+				if tensor.neighbors()!=[]:
+					for neighbor in tensor.neighbors():
 						parentTensors.append(neighbor)
 						#gets neighboring tensors around the tensor, if they are within the ROI
 						neighbor.accumulate(tensor)
@@ -344,7 +350,6 @@ def learn(img,z, Nx=0,Ny=0,delta=1):
 
 			#if no outgoing edges
 			if parentTensors==[]:
-				print("no parent tensors", input_tensors,"\n\n")
 				#adds a new tensor to the
 				parentTensor=Tensor(inputs=input_tensors,N=(Nx,Ny,key))
 				key+=10
@@ -358,8 +363,8 @@ def learn(img,z, Nx=0,Ny=0,delta=1):
 
 				#add a connection to the parentTensor
 				for input in input_tensors:
+					Tensor.edges_dict[input.N].append(parentTensor)
 					# print("these are the inputs that i am adding a connection to",input)
-					input.neighbors.append(parentTensor)
 
 
 	print("found {} new parent tensors".format(newParentTensors))
@@ -432,12 +437,12 @@ def main2():
 
 	z=dict()
 	#circle
-	img = np.eye(27, dtype=np.uint8)
-	# img = np.zeros((xRange,xRange,3), np.uint8)
-	# # cv2.rectangle(img,(384,0),(510,128),(0,255,0),100)
-	# cv2.circle(img,(250,250), 200, (0,0,255), -1)
-	# img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-	# img = cv2.Laplacian(img,cv2.CV_64F)
+	# img = np.eye(27, dtype=np.uint8)
+	img = np.zeros((xRange,xRange,3), np.uint8)
+	# cv2.rectangle(img,(384,0),(510,128),(0,255,0),100)
+	cv2.circle(img,(250,250), 200, (0,0,255), -1)
+	img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+	img = cv2.Laplacian(img,cv2.CV_64F)
 	# cv2.imshow("laplazian filter", img)	
 
 	#tensor array
