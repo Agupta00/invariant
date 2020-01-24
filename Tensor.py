@@ -1,9 +1,3 @@
-##TODO
-# implement multiple tensor activations in on ROI, currently using a set to limit to one..
-#change inputsfrom region to take inputs from neighbors of active tensors.. this will help it not be stride dependent, 
-# aka chopy it will be smoth and continius
-
-
 #! /usr/bin/env python3
 from typing import List, Set, Dict, Tuple, Optional
 import collections
@@ -19,9 +13,10 @@ import math
 import copy
 
 
+key=1
 
 xRange=yRange=510
-key=100
+
 
 def neighbors(x, y, xRange, yRange, i=1,limit=1):
 	# i=2, limit=2, where a is the returned values
@@ -67,12 +62,11 @@ class Tensor:
 			self.neighbors=[]
 		else:
 			# self.cm = cm
-			self.N=N
-			self.pointer_dict={}
 			self.inputs=inputs
 			self.input_dict=dict()
 			self.init_types(inputs)
 			self.cm=self.get_cm()
+			self.N=N
 			# self.length=1
 			self.length=self.get_length()
 			self.relLen_dict=self.get_relLen(inputs)
@@ -113,8 +107,8 @@ class Tensor:
 		return hash(frozenset(self.input_dict).union(self.relLen_dict).union(self.pointer_dict))
 
 
-	def __repr__(self, plist=["cm","inputs","pointer_dict"]):
-		plist=[]
+	def __repr__(self, plist=["cm","neighbors","inputs","pointer_dict"]):
+		# plist=["length"]
 		if(self.N==(0,0,0)):
 			plist=["cm"]
 		rep= "\nTensor: " + str(self.N) +"\n"
@@ -137,7 +131,7 @@ class Tensor:
 	#runtime activation of this tensor given inputs
 
 	#updates atribute_dict and returns activation (int), 0 if no activation
-	def activate_component(self,inputs,input_dict,atribute, norm=1/15, threshold=1, help=0):
+	def activate_component(self,inputs,input_dict,atribute, norm=1/15, threshold=1/2, help=0):
 	    # input_dict=self.input_dict
 	    act=help
 	    present = lambda key, inputs: 1 if key in inputs else 0
@@ -173,8 +167,9 @@ class Tensor:
 	    except:
 	    	pass
 
+
 	    #add weights for present inputs who were not in input_dict to updated dict
-	    if act>=threshold:
+	    if act>threshold:
 	        for item in inputs:
 	            if(item not in input_dict):
 	                # (a:2)=0.005 #(type:number)=initial weight
@@ -203,15 +198,15 @@ class Tensor:
 
 		act=self.activate_component(self.get_pointers(self.inputs), self.pointer_dict, atribute="pointer_dict")
 		if act==0:
-			# self.clean()
+			self.clean()
 			return 0
 		elif act>threshold:
 			if self.length!=1:
 				# print("old length",self.length, "new length", self.get_length(),"\n\n")
 				self.length=self.get_length()
+				self.clean()
 
-
-		# self.clean()
+		self.clean()
 		return act
 
 
@@ -336,64 +331,51 @@ def accumlate_neighbors(self,inputs):
 
 
 def learn(img,z, Nx=0,Ny=0,delta=1):
-	global key
 	img2=np.zeros((img.shape[0]//delta + 1 ,img.shape[1]//delta + 1), Tensor)
 
 	newParentTensors=0
+	key=50
 	sizeX,sizeY=img.shape[0],img.shape[1]
 	for x in range(1,sizeX,delta):	
 		for y in range(1,sizeY,delta):	
-
+			print(key)		
 			#tensors in the ROI centered around x,y
 			input_tensors=inputs_fromImg(x,y,img)
 			if input_tensors==None:
 				continue
 
 			#accumulate current inputs to parent tensors
-			parentTensors=set()
-			# parentTensors=[]
+			parentTensors=[]
 			for tensor in input_tensors:
 				for neighbor in tensor.neighbors():
-					parentTensors.add(neighbor)
+					parentTensors.append(neighbor)
 					#gets neighboring tensors around the tensor, if they are within the ROI
 					neighbor.accumulate(tensor)
+					# neighbor.accumulate([tensor for tensor in input_tensors if tensor.cm[0]<=x+1 and tensor.cm[1]<=y+1])
+				
+			# activate each parent tensor
+			# for parentTensor in parentTensors:
+			# 	parentTensor.activate()
 
-			parentTensors=list(parentTensors)
-			activations=0
 			if parentTensors!=[]:
 				activations= np.array([parentTensor.activate() for parentTensor in parentTensors])
 				index_max=np.argmax(activations)
 
-
-			if(int(x//delta)==6 and int(y//delta)==50 ):
-					print("parent tensor at x=50",activations)
-					print(parentTensors)
-					print(int(x//delta),int(y//delta))
-
 			if parentTensors==[] or activations[index_max]==0:
-				img2[int(x//delta)][int(y//delta)]=0
+				img2[int(x//delta)-1][int(y//delta)-1]=0
 				#if no outgoing edges
 				#adds a new tensor to the
 				parentTensor=Tensor(inputs=input_tensors,N=(Nx,Ny,key))
-				if(int(x//delta)==6 and int(y//delta)==50 ):
-					print("parent tensor",parentTensor)
 				key+=1
-
-				# img2[int(x//delta)][int(y//delta)]=parentTensor
 
 				if parentTensor not in z:
 					z[parentTensor]=parentTensor.N
 					newParentTensors+=1
-				#add a connection to the parentTensor
-				for input in input_tensors:
-					Tensor.edges_dict[input.N].add(parentTensor)
+					#add a connection to the parentTensor
+					for input in input_tensors:
+						Tensor.edges_dict[input.N].add(parentTensor)
 			else:
-				# img2[int(x//delta)][int(y//delta)]=copy.deepcopy(parentTensors[index_max])
-				img2[int(x//delta)][int(y//delta)]=parentTensors[index_max]
-
-
-
-			# print(img[][])
+				img2[int(x//delta)][int(y//delta)]=copy.deepcopy(parentTensors[index_max])
 
 			# if parentTensors!=[]:
 			# 	activations= np.array([parentTensor.activate() for parentTensor in parentTensors])
@@ -518,7 +500,7 @@ def test(img,z,i):
 
 def learnLayer(z0Img,a,z1):
 	# z1=dict()
-	for i in range(5):
+	for i in range(20):
 		z1Img=learn(z0Img,z1,Nx=a,Ny=a,delta=3)	
 		z1Img_pixels=convertTensorToPixel(z1Img)
 		show(z1Img_pixels)
@@ -527,11 +509,12 @@ def learnLayer(z0Img,a,z1):
 
 
 def main2():
+
 	z=dict()
 	#circle
-	img = np.eye(9, dtype=np.uint8)
+	img = np.eye(270, dtype=np.uint8)
 	# img = np.zeros((xRange,xRange,3), np.uint8)
-	# cv2.rectangle(img,(50,50),(400,100),(0,255,0),100)
+	# cv2.rectangle(img,(100,250),(400,128),(0,255,0),100)
 	# cv2.circle(img,(250,250), 200, (0,0,255), -1)
 	# img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
 	# img = cv2.Laplacian(img,cv2.CV_64F)
@@ -558,8 +541,8 @@ def main2():
 	# 	show(z1Img_pixels)
 	z=dict()
 	for i in range(4):
-		out=learnLayer(z0Img,0,z)
-		z1Img_pixels=convertTensorToPixel(out)
+		z0Img=learnLayer(z0Img,0,z)
+		z1Img_pixels=convertTensorToPixel(z0Img)
 		# show(z1Img_pixels)
 
 
