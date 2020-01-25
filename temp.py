@@ -138,9 +138,9 @@ class Tensor:
 	#runtime activation of this tensor given inputs
 
 	#updates atribute_dict and returns activation (int), 0 if no activation
-	def activate_component(self,inputs,input_dict,atribute, norm=1/15, threshold=1, help=0):
+	def activate_component(self,inputs,input_dict,atribute, norm=1/15, threshold=.75, help=0):
 	    # input_dict=self.input_dict
-	    act=help
+	    act=help+.1
 	    present = lambda key, inputs: 1 if key in inputs else 0
 
 	    # left side of the gaussian curve, from domain 0->1
@@ -186,7 +186,7 @@ class Tensor:
 	    else:
 	        return 0
 
-	def activate(self,threshold=3/4):
+	def activate(self):
 		# if self.activate_component(self.get_inputs(self.inputs),self.input_dict)==False:
 		# 	self.clean()
 		# 	return False
@@ -208,9 +208,8 @@ class Tensor:
 			# self.length=0
 			# self.cm=None
 			return 0
-		elif act>threshold:
+		else:
 			if self.length!=1:
-				# print("old length",self.length, "new length", self.get_length(),"\n\n")
 				self.length=self.get_length()
 			self.cm=self.get_cm()
 			self.clean()
@@ -294,7 +293,7 @@ def inputs_fromImg(x,y,img, sizeX=None,sizeY=None):
 	cm =[x,y]
 	input_tensors=[img[cm_[0]][cm_[1]] for cm_ in neighbors(x,y, xRange=sizeX,yRange=sizeY ) if type(img[cm_[0],cm_[1]])!=int]
 
-	if(len(input_tensors)>1): 
+	if(len(input_tensors)>0): 
 		return input_tensors
 	else:
 		return None
@@ -355,6 +354,13 @@ def learn(img,z, Nx=0,Ny=0,delta=1):
 			parentTensors=set()
 
 			#temp fix for creating duplicate tensors
+			# for tensor in input_tensors:
+			# 	for neighbor in tensor.neighbors():
+			# 		copyNeighbor=copy.deepcopy(neighbor)
+			# 		parentTensors.add(copyNeighbor)
+			# 		copyNeighbor.accumulate(tensor)
+
+
 			for tensor in input_tensors:
 				for neighbor in tensor.neighbors():
 					if not neighbor in parentTensors:
@@ -375,14 +381,12 @@ def learn(img,z, Nx=0,Ny=0,delta=1):
 				activations= np.array([parentTensor.activate() for parentTensor in parentTensors])
 				index_max=np.argmax(activations)
 
-			print("__________________________\n")
-			# print([x.N for x in parentTensors])
-			print(activations)
-			print("__________________________\n")
+			# print(activations)
 			if parentTensors==[] or activations[index_max]==0:
+				parentTensor=Tensor(inputs=input_tensors,N=(Nx,Ny,key))
+				print(parentTensor.N)
 				img2[int(x//delta)][int(y//delta)]=0
 
-				parentTensor=Tensor(inputs=input_tensors,N=(Nx,Ny,key))
 				# print("new tensor",int(x//delta),int(y//delta),parentTensor.N)
 
 				if parentTensor not in z:
@@ -493,7 +497,7 @@ def test(img,z,i):
 
 def learnLayer(z0Img,a,z1):
 	# z1=dict()
-	for i in range(3):
+	for i in range(2):
 		z1Img=learn(z0Img,z1,Nx=a,Ny=a,delta=3)	
 		z1Img_pixels=convertTensorToPixel(z1Img)
 		show(z1Img_pixels)
@@ -507,7 +511,7 @@ def main2():
 	# img = np.eye(270, dtype=np.uint8)
 	img = np.zeros((xRange,xRange,3), np.uint8)
 	cv2.rectangle(img,(75,75),(400,100),(0,255,0),100)
-	# cv2.circle(img,(250,250), 200, (0,0,255), -1)
+	cv2.circle(img,(250,250), 200, (0,0,255), -1)
 	img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
 	img = cv2.Laplacian(img,cv2.CV_64F)
 	cv2.imshow("laplazian filter", img)	
