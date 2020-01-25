@@ -217,7 +217,6 @@ class Tensor:
 
 		return act
 
-
 	def get_inputs(self,inputs):
 		# return collections.Counter(x.N for x in inputs)
 		counter = collections.Counter(x.N for x in inputs)
@@ -354,13 +353,21 @@ def learn(img,z, Nx=0,Ny=0,delta=1):
 
 			#accumulate current inputs to parent tensors
 			parentTensors=set()
-			# parentTensors=[]
+
+			#temp fix for creating duplicate tensors
 			for tensor in input_tensors:
 				for neighbor in tensor.neighbors():
-					copyNeighbor=copy.deepcopy(neighbor)
-					parentTensors.add(copyNeighbor)
+					if not neighbor in parentTensors:
+						copyNeighbor=copy.deepcopy(neighbor)
+						parentTensors.add(copyNeighbor)
+						copyNeighbor.accumulate(tensor)
+					else:
+						for item in parentTensors:
+							if item==neighbor:
+								item.accumulate(tensor)
+
 					#gets neighboring tensors around the tensor, if they are within the ROI
-					copyNeighbor.accumulate(tensor)
+
 
 			parentTensors=list(parentTensors)
 			activations=0
