@@ -384,14 +384,14 @@ def learn(img,z, Nx=0,Ny=0,delta=1):
 			# print(activations)
 			if parentTensors==[] or activations[index_max]==0:
 				parentTensor=Tensor(inputs=input_tensors,N=(Nx,Ny,key))
-				print(parentTensor.N)
+				# print(parentTensor.N)
 				img2[int(x//delta)][int(y//delta)]=0
 
 				# print("new tensor",int(x//delta),int(y//delta),parentTensor.N)
 
 				if parentTensor not in z:
 					z[parentTensor]=parentTensor.N
-					key+=1
+					key+=3
 					newParentTensors+=1
 					#add a connection to the parentTensor
 					for input in input_tensors:

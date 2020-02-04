@@ -2,7 +2,7 @@
 #include <string>
 
 int len(std::string s){
-	std::string word = s[-1];
+	std::string word = s;
 	return(word.size());
 
 }
