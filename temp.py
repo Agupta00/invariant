@@ -114,10 +114,10 @@ class Tensor:
 		return hash(frozenset(self.input_dict).union(self.relLen_dict).union(self.pointer_dict))
 
 
-	def __repr__(self, plist=["cm","inputs","pointer_dict"]):
-		plist=["pointer_dict","cm"]
-		if(self.N==(0,0,0)):
-			plist=["cm"]
+	def __repr__(self, plist=["cm","inputs","pointer_dict", "length"]):
+		# plist=["pointer_dict","cm"]
+		# if(self.N==(0,0,0)):
+		# 	plist=["cm"]
 		rep= "\nTensor: " + str(self.N) +"\n"
 		for atr in plist:
 			if atr=="neighbors":
@@ -138,9 +138,9 @@ class Tensor:
 	#runtime activation of this tensor given inputs
 
 	#updates atribute_dict and returns activation (int), 0 if no activation
-	def activate_component(self,inputs,input_dict,atribute, norm=1/15, threshold=.75, help=0):
+	def activate_component(self,inputs,input_dict,atribute, norm=1/15, threshold=.5, help=0):
 	    # input_dict=self.input_dict
-	    act=help+.1
+	    act=help
 	    present = lambda key, inputs: 1 if key in inputs else 0
 
 	    # left side of the gaussian curve, from domain 0->1
@@ -148,7 +148,7 @@ class Tensor:
 	    dw = lambda w: -2*math.pi*(w-1)*p(w)
 
 	    #return updated if activated, else keep old one
-	    updated_input_dict=input_dict.copy()
+	    updated_input_dict=copy.deepcopy(input_dict)
 	    #inputs is a set of type counter ie (type:number)
 	    #input_dict=( (type:number),weight)
 	    for key,w in input_dict.items():
@@ -181,7 +181,8 @@ class Tensor:
 	                # (a:2)=0.005 #(type:number)=initial weight
 	                updated_input_dict[item]=round(p(0),4)
 	                # self.input_dict=updated_input_dict
-	                setattr(self,atribute,updated_input_dict)
+
+        	setattr(self,atribute,updated_input_dict)
 	        return act
 	    else:
 	        return 0
@@ -190,19 +191,18 @@ class Tensor:
 		# if self.activate_component(self.get_inputs(self.inputs),self.input_dict)==False:
 		# 	self.clean()
 		# 	return False
-
-		# print(self.length,"\n\n")
+		self.length=self.get_length()
+		self.cm=self.get_cm()
 		act=0
 		
-		#TODO, if missing inputs allow for reduced activation
 
 		#correct relative lengths
 		# if(self.relLen_dict!=self.get_relLen(self.inputs)):
 		# 	self.clean()
 		# 	return 0
 
-
 		act=self.activate_component(self.get_pointers(self.inputs), self.pointer_dict, atribute="pointer_dict")
+		# print("\n Inside activation",self.inputs,"\n\n")
 		if act==0:
 			self.clean()
 			# self.length=0
@@ -281,7 +281,7 @@ class Tensor:
 	            #b->c
 	            # pointer_dict[(inputs[i].N,inputs[i+1].N)].append(pointer(i,i+1))
 	            pointer_counter.update([pointer(i,i+1)])
-	    # print("pointers",pointer_dict)
+	    # print("pointers",pointer_counter)
 	    return frozenset(pointer_counter)
 
 
@@ -290,7 +290,6 @@ def inputs_fromImg(x,y,img, sizeX=None,sizeY=None):
 		sizeX=img.shape[0]
 		sizeY=img.shape[1]
 
-	cm =[x,y]
 	input_tensors=[img[cm_[0]][cm_[1]] for cm_ in neighbors(x,y, xRange=sizeX,yRange=sizeY ) if type(img[cm_[0],cm_[1]])!=int]
 
 	if(len(input_tensors)>0): 
@@ -311,6 +310,7 @@ def transformImg(img):
 #for each active tensor get the nearest K tensors, corresponds to delta-1 sliding kernel
 #given an input of an array of tensors
 def learn_z0(img,z, Nx=0,Ny=0,delta=1):
+	# global key
 	key=50
 	sizeX,sizeY=img.shape[0],img.shape[1]
 	for x in range(1,sizeX,delta):	
@@ -325,13 +325,13 @@ def learn_z0(img,z, Nx=0,Ny=0,delta=1):
 			if tensor not in z:
 				key+=10
 				z[tensor]=tensor.N
+				print(tensor)
 	print("found {} tensors".format(len(z)))
 
 
 def accumlate_neighbors(self,inputs):
 	for neighbor in self.neighbors():
 		#for now edge is just a Parent tensor, todo update with weight
-
 		#provide region around the given tensor to learn relations
 		neighbor.accumulate(inputs)
 
@@ -357,19 +357,21 @@ def learn(img,z, Nx=0,Ny=0,delta=1):
 			# for tensor in input_tensors:
 			# 	for neighbor in tensor.neighbors():
 			# 		copyNeighbor=copy.deepcopy(neighbor)
-			# 		parentTensors.add(copyNeighbor)
+			# 		parentTensors.add(copyNeighbor)g
 			# 		copyNeighbor.accumulate(tensor)
 
 
 			for tensor in input_tensors:
 				for neighbor in tensor.neighbors():
-					if not neighbor in parentTensors:
+					if neighbor not in parentTensors:
+						neighbor.inputs=[]
 						copyNeighbor=copy.deepcopy(neighbor)
 						parentTensors.add(copyNeighbor)
 						copyNeighbor.accumulate(tensor)
 					else:
 						for item in parentTensors:
 							if item==neighbor:
+								# print("-------\n",neighbor.inputs,"-------\n")
 								item.accumulate(tensor)
 
 					#gets neighboring tensors around the tensor, if they are within the ROI
@@ -377,9 +379,11 @@ def learn(img,z, Nx=0,Ny=0,delta=1):
 
 			parentTensors=list(parentTensors)
 			activations=0
+			# print("z",z,"\n\n\n")
 			if parentTensors!=[]:
 				activations= np.array([parentTensor.activate() for parentTensor in parentTensors])
 				index_max=np.argmax(activations)
+				print("activations ", activations)
 
 			# print(activations)
 			if parentTensors==[] or activations[index_max]==0:
@@ -390,8 +394,10 @@ def learn(img,z, Nx=0,Ny=0,delta=1):
 				# print("new tensor",int(x//delta),int(y//delta),parentTensor.N)
 
 				if parentTensor not in z:
-					z[parentTensor]=parentTensor.N
 					key+=3
+					print("HEREERE\n")
+					print("parent tensor that was created",parentTensor, "\n------")
+					z[parentTensor]=parentTensor.N
 					newParentTensors+=1
 					#add a connection to the parentTensor
 					for input in input_tensors:
@@ -404,6 +410,7 @@ def learn(img,z, Nx=0,Ny=0,delta=1):
 
 	print("found {} new parent tensors".format(newParentTensors))
 	return img2
+
 
 #converts to Big tensor given img of tensor inputs
 def showNeighborhood(img,z, delta=1):
@@ -438,7 +445,8 @@ def fowardPass(img,z, delta=1):
 			if input_tensors==None:
 				continue
 			tensor= Tensor(cm=[x,y], inputs=input_tensors, N=(0,0,0))
-
+			# print("unit tensor size ", tensor.length)
+			# print(tensor)
 			# print(z[tensor])
 			if z.get(tensor)==None:
 				img2[int(x/delta)][int(y/delta)]=0
@@ -493,27 +501,84 @@ def test(img,z,i):
 
 
 
+def myPattern():
+	img = np.zeros((270,270), dtype=np.uint8)
+	xv = 1
+	yv = 1
 
+	for mode in range(100):
+		if(mode%2==0):
+			for x in range(3):
+				img[xv][yv]=200
+				xv+=1
+		else:
+			for y in range(5):
+				img[xv][yv]=200
+				yv+=1
+	return img
+
+def debug_tensor(z0Img):
+	# val = input("view tensor?: ") 
+	val=50
+	if (val!=""):
+		val = int(val)
+		#find N in the tensor img, and print
+		exit=False
+		for x in z0Img:
+			if(exit): break
+			for y in x:
+				if(type(y)!=int and (y.N[2]==val or True) ):
+					print(y)
+					# exit=True
+					# break
 
 def learnLayer(z0Img,a,z1):
 	# z1=dict()
-	for i in range(2):
+	for i in range(4):
 		z1Img=learn(z0Img,z1,Nx=a,Ny=a,delta=3)	
 		z1Img_pixels=convertTensorToPixel(z1Img)
+		print(i)
+		debug_tensor(z1Img)
 		show(z1Img_pixels)
 	return z1Img
 
 
+def triangle():
+	image = np.ones((xRange, yRange, 3), np.uint8) * 255
+
+	pt1 = (100, 15)
+	pt2 = (100, 500)
+	pt3 = (400, 500)
+
+	triangle_cnt = np.array( [pt1, pt2, pt3] )
+
+	image = cv2.drawContours(image, [triangle_cnt], 0, (0,255,0), -1)
+	image = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+	image = cv2.Laplacian(image,cv2.CV_64F)
+	return image
+
+def circle():
+	#circle
+	# img = np.eye(270, dtype=np.uint8)
+	img = np.zeros((xRange,xRange,3), np.uint8)
+	cv2.circle(img,(250,250), 200, (0,0,255), -1)
+	img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+	img = cv2.Laplacian(img,cv2.CV_64F)
+	return img
+	# k=cv2.waitKey(0)
+
+def eye():
+	img = np.eye(27, dtype=np.uint8)*255
+	cv2.imshow("laplazian filter", img)	
+	return img
 
 def main2():
 	z=dict()
 	#circle
-	# img = np.eye(270, dtype=np.uint8)
-	img = np.zeros((xRange,xRange,3), np.uint8)
-	cv2.rectangle(img,(75,75),(400,100),(0,255,0),100)
-	cv2.circle(img,(250,250), 200, (0,0,255), -1)
-	img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-	img = cv2.Laplacian(img,cv2.CV_64F)
+	# img = np.zeros((xRange,xRange,3), np.uint8)
+	# cv2.rectangle(img,(75,75),(400,100),(0,255,0),100)
+	# cv2.circle(img,(250,250), 200, (0,0,255), -1)
+	img=eye()
 	cv2.imshow("laplazian filter", img)	
 	# k=cv2.waitKey(0)
 
@@ -535,19 +600,19 @@ def main2():
 	# 	z1Img=learn(z0Img,z1,Nx=1,Ny=1,delta=3)	
 	# 	z1Img_pixels=convertTensorToPixel(z1Img)
 	# 	show(z1Img_pixels)
-	z=dict()
+	# z=dict()
 	for i in range(4):
 		z0Img=learnLayer(z0Img,0,z)
 		z1Img_pixels=convertTensorToPixel(z0Img)
+
+		for x in z.values():
+			print(x)
+		print("end__\n\n")
+
 		# show(z1Img_pixels)
 
 
+
 main2()
-
-	# for key,value in z1.items():
-	# 	print(key)
-
-	# for i in range(1):
-	# 	img=recursiveZ(img,z,i)
 
 
