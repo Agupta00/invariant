@@ -303,15 +303,20 @@ def transformImg(img):
 	tensorImg=np.zeros((img.shape[0],img.shape[1]), Tensor) 
 	for x in range(0,img.shape[0]):
 		for y in range(0,img.shape[1]):
-			if(img[x][y]!=0):
+
+			if(type(img[x][y])!=Tensor and img[x][y]!=0):
+				print(type(img[x][y]), img[x][y])
+				tensorImg[x][y]=Tensor(cm=[x,y],unit_tensor=True)
+			elif(type(img[x][y])==Tensor):
+				print(type(img[x][y]), img[x][y])
 				tensorImg[x][y]=Tensor(cm=[x,y],unit_tensor=True)
 	return tensorImg
 
 #for each active tensor get the nearest K tensors, corresponds to delta-1 sliding kernel
 #given an input of an array of tensors
 def learn_z0(img,z, Nx=0,Ny=0,delta=1):
-	# global key
-	key=50
+	global key
+	# key=50
 	sizeX,sizeY=img.shape[0],img.shape[1]
 	for x in range(1,sizeX,delta):	
 		for y in range(1,sizeY,delta):
@@ -337,8 +342,10 @@ def accumlate_neighbors(self,inputs):
 
 
 def learn(img,z, Nx=0,Ny=0,delta=1):
+	cycle=0
 	global key
 	img2=np.zeros((img.shape[0]//delta + 1 ,img.shape[1]//delta + 1), Tensor)
+	reccurenceImg=np.zeros((img.shape[0],img.shape[1]), Tensor)
 
 	newParentTensors=0
 	sizeX,sizeY=img.shape[0],img.shape[1]
@@ -383,10 +390,10 @@ def learn(img,z, Nx=0,Ny=0,delta=1):
 			if parentTensors!=[]:
 				activations= np.array([parentTensor.activate() for parentTensor in parentTensors])
 				index_max=np.argmax(activations)
-				print("activations ", activations)
 
 			# print(activations)
 			if parentTensors==[] or activations[index_max]==0:
+
 				parentTensor=Tensor(inputs=input_tensors,N=(Nx,Ny,key))
 				# print(parentTensor.N)
 				img2[int(x//delta)][int(y//delta)]=0
@@ -394,20 +401,31 @@ def learn(img,z, Nx=0,Ny=0,delta=1):
 				# print("new tensor",int(x//delta),int(y//delta),parentTensor.N)
 
 				if parentTensor not in z:
-					key+=3
-					print("HEREERE\n")
-					print("parent tensor that was created",parentTensor, "\n------")
-					z[parentTensor]=parentTensor.N
-					newParentTensors+=1
-					#add a connection to the parentTensor
-					for input in input_tensors:
-						Tensor.edges_dict[input.N].add(parentTensor)
+					print("here")
+					cycle =1
+					#create unit-tensor
+					if Nx>0:
+						reccurenceImg[int(x//delta)][int(y//delta)]=Tensor(cm=[x,y],unit_tensor=True)
+					else:
+
+						key+=3
+						z[parentTensor]=parentTensor.N
+						newParentTensors+=1
+						#add a connection to the parentTensor
+						for input in input_tensors:
+							Tensor.edges_dict[input.N].add(parentTensor)
 			else:
 				# print(parentTensors[index_max].cm)
 				# img2[int(x//delta)][int(y//delta)]=copy.deepcopy(parentTensors[index_max])
 				img2[int(x//delta)][int(y//delta)]=parentTensors[index_max]
 
-
+	print("nx " ,Nx)
+	if cycle==1 and Nx>0:	
+		print("returning tensor img")
+		# print(img)
+		out=fowardPass(transformImg(img),z,delta=3)
+		print(out)
+		return out
 	print("found {} new parent tensors".format(newParentTensors))
 	return img2
 
@@ -435,7 +453,7 @@ def showNeighborhood(img,z, delta=1):
 
 #given tensor img of layer i gives tensor img of i+1
 def fowardPass(img,z, delta=1):
-	img2=np.zeros((img.shape[0]//delta,img.shape[1]//delta,), Tensor)
+	img2=np.zeros((img.shape[0]//delta+1,img.shape[1]//delta+1,), Tensor)
 
 	print("img shape",img.shape)
 	for x in range(1,img.shape[0],delta):	
@@ -444,6 +462,7 @@ def fowardPass(img,z, delta=1):
 			# print(unit_tensors)
 			if input_tensors==None:
 				continue
+			# print(input_tensors,"\n\n")
 			tensor= Tensor(cm=[x,y], inputs=input_tensors, N=(0,0,0))
 			# print("unit tensor size ", tensor.length)
 			# print(tensor)
@@ -458,6 +477,8 @@ def fowardPass(img,z, delta=1):
 	# print([img2[x][y] for x in range(512) for y in range(512) if img2[x][y]!=0])
 	# cv2.imshow("Z0",img2)
 	# k = cv2.waitKey(0) # 0==wait forever
+	print("fowardPass")
+	show(convertTensorToPixel(img2), "fowardPass")
 	return img2
 
 
@@ -470,10 +491,10 @@ def convertTensorToPixel(img):
 				img2[x][y]=img[x][y].N[2]	
 	return img2	
 			#tenso
-def show(img):
-	cv2.namedWindow("z",cv2.WINDOW_NORMAL)
-	cv2.resizeWindow("z", 600,600)
-	cv2.imshow("z",img)
+def show(img, name = "z"):
+	cv2.namedWindow(name,cv2.WINDOW_NORMAL)
+	cv2.resizeWindow(name, 600,600)
+	cv2.imshow(name,img)
 	k = cv2.waitKey(0) # 0==wait forever
 
 
@@ -538,7 +559,7 @@ def learnLayer(z0Img,a,z1):
 		z1Img=learn(z0Img,z1,Nx=a,Ny=a,delta=3)	
 		z1Img_pixels=convertTensorToPixel(z1Img)
 		print(i)
-		debug_tensor(z1Img)
+		# debug_tensor(z1Img)
 		show(z1Img_pixels)
 	return z1Img
 
@@ -602,7 +623,7 @@ def main2():
 	# 	show(z1Img_pixels)
 	# z=dict()
 	for i in range(4):
-		z0Img=learnLayer(z0Img,0,z)
+		z0Img=learnLayer(z0Img,i,z)
 		z1Img_pixels=convertTensorToPixel(z0Img)
 
 		for x in z.values():
