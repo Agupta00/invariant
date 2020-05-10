@@ -1,3 +1,1 @@
-Todo:
-
-input tensor updates its edge with the correct weight value, and if that weight value gets removed in the parent tensor during learning then that edge gets removed
+temp.py is the main file. The architecture is described in abstract.pdf. Skip to section 3 for a technical description of the model.
